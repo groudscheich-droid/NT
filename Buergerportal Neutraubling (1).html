@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bürger-Portal Neutraubling – Mängel, Ideen & Lob</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome CDN for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        /* Custom Scrollbar for Sidebar */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        /* Custom Marker pulse effect for adding new pin */
+        @keyframes pulse-pin {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.25); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .pin-pulse {
+            animation: pulse-pin 1.5s infinite ease-in-out;
+        }
+        /* Leaflet popup styling override */
+        .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+            padding: 0;
+            overflow: hidden;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        }
+        .leaflet-popup-content {
+            margin: 0;
+            width: 280px !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 flex flex-col h-screen overflow-hidden">
+
+    <!-- Header / Navbar -->
+    <header class="bg-gradient-to-r from-blue-900 via-blue-800 to-teal-700 text-white shadow-md z-20 flex-none">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center text-blue-900 font-bold text-xl shadow-inner border-2 border-teal-400">
+                    <i class="fa-solid fa-city"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg sm:text-xl font-bold tracking-tight">Bürgerportal Neutraubling</h1>
+                    <p class="text-xs text-blue-200 hidden sm:block">Mängel melden, Ideen einbringen & Lob aussprechen</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                <button onclick="openFormModal()" class="bg-teal-500 hover:bg-teal-600 active:scale-95 transition text-white px-3 sm:px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-2 shadow-md">
+                    <i class="fa-solid fa-plus"></i>
+                    <span class="hidden sm:inline">Meldung erstellen</span>
+                    <span class="sm:hidden">Neu</span>
+                </button>
+                <button id="toggleSidebarBtn" onclick="toggleSidebar()" class="lg:hidden bg-blue-900/50 hover:bg-blue-900 p-2 rounded-lg text-white">
+                    <i class="fa-solid fa-bars text-lg"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area: Sidebar + Map -->
+    <div class="flex-1 flex flex-col lg:flex-row relative overflow-hidden">
+
+        <!-- Sidebar / Report List -->
+        <aside id="sidebar" class="w-full lg:w-96 bg-white shadow-xl flex flex-col z-10 transition-all duration-300 absolute lg:relative inset-y-0 left-0 transform -translate-x-full lg:translate-x-0 h-full">
+            
+            <!-- Filter Header -->
+            <div class="p-4 border-b border-slate-200 bg-slate-50">
+                <div class="flex justify-between items-center mb-3 lg:hidden">
+                    <h2 class="font-bold text-slate-700">Übersicht & Filter</h2>
+                    <button onclick="toggleSidebar()" class="text-slate-400 hover:text-slate-600">
+                        <i class="fa-solid fa-xmark text-xl"></i>
+                    </button>
+                </div>
+
+                <!-- Search Input -->
+                <div class="relative mb-3">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                    <input type="text" id="searchInput" oninput="filterReports()" placeholder="Meldung oder Straße suchen..." 
+                        class="w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                </div>
+
+                <!-- Category Filters -->
+                <div class="flex flex-wrap gap-1.5 text-xs">
+                    <button onclick="setCategoryFilter('all')" id="filter-all" class="filter-btn active bg-slate-800 text-white px-2.5 py-1.5 rounded-full font-medium transition">
+                        Alle <span id="count-all" class="opacity-80">0</span>
+                    </button>
+                    <button onclick="setCategoryFilter('complaint')" id="filter-complaint" class="filter-btn bg-red-100 text-red-700 hover:bg-red-200 px-2.5 py-1.5 rounded-full font-medium transition">
+                        <i class="fa-solid fa-triangle-exclamation mr-1"></i>Mängel <span id="count-complaint" class="opacity-80">0</span>
+                    </button>
+                    <button onclick="setCategoryFilter('idea')" id="filter-idea" class="filter-btn bg-blue-100 text-blue-700 hover:bg-blue-200 px-2.5 py-1.5 rounded-full font-medium transition">
+                        <i class="fa-solid fa-lightbulb mr-1"></i>Ideen <span id="count-idea" class="opacity-80">0</span>
+                    </button>
+                    <button onclick="setCategoryFilter('note')" id="filter-note" class="filter-btn bg-amber-100 text-amber-700 hover:bg-amber-200 px-2.5 py-1.5 rounded-full font-medium transition">
+                        <i class="fa-solid fa-info-circle mr-1"></i>Hinweise <span id="count-note" class="opacity-80">0</span>
+                    </button>
+                    <button onclick="setCategoryFilter('praise')" id="filter-praise" class="filter-btn bg-emerald-100 text-emerald-700 hover:bg-emerald-200 px-2.5 py-1.5 rounded-full font-medium transition">
+                        <i class="fa-solid fa-heart mr-1"></i>Lob <span id="count-praise" class="opacity-80">0</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Reports List Scrollable -->
+            <div id="reportsList" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                <!-- Dynamically populated -->
+            </div>
+
+            <!-- Sidebar Footer Stats / Info -->
+            <div class="p-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex justify-between items-center">
+                <span>Stadt Neutraubling Bürger-Feedback</span>
+                <button onclick="resetToDemoData()" class="text-blue-600 hover:underline flex items-center gap-1">
+                    <i class="fa-solid fa-rotate"></i> Demo-Daten
+                </button>
+            </div>
+        </aside>
+
+        <!-- Map Container -->
+        <main class="flex-1 relative h-full">
+            <div id="map"></div>
+
+            <!-- Map Instruction Banner overlay -->
+            <div class="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/80 backdrop-blur-md text-white text-xs sm:text-sm px-4 py-2 rounded-full shadow-lg z-[500] pointer-events-none flex items-center space-x-2">
+                <i class="fa-solid fa-hand-pointer text-teal-400 animate-bounce"></i>
+                <span>Klicke auf die Karte, um einen Ort für eine neue Meldung zu wählen</span>
+            </div>
+
+            <!-- Mobile Toggle Sidebar Overlay Floating Button -->
+            <button onclick="toggleSidebar()" class="lg:hidden absolute bottom-6 right-6 bg-blue-900 text-white p-4 rounded-full shadow-2xl z-[500] flex items-center justify-center text-lg active:scale-90 transition">
+                <i class="fa-solid fa-list-ul"></i>
+            </button>
+        </main>
+    </div>
+
+    <!-- Modal Form for New Report -->
+    <div id="formModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[1000] hidden flex items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden transform transition-all my-8">
+            
+            <!-- Modal Header -->
+            <div class="bg-gradient-to-r from-blue-900 to-teal-700 text-white p-5 flex justify-between items-center">
+                <div>
+                    <h3 class="text-lg font-bold">Neue Meldung einreichen</h3>
+                    <p class="text-xs text-blue-100">Bürgerbeteiligung Neutraubling</p>
+                </div>
+                <button onclick="closeFormModal()" class="text-white/80 hover:text-white p-1 rounded-lg">
+                    <i class="fa-solid fa-xmark text-2xl"></i>
+                </button>
+            </div>
+
+            <!-- Modal Form Body -->
+            <form id="reportForm" onsubmit="handleFormSubmit(event)" class="p-6 space-y-4">
+                
+                <!-- Category Select -->
+                <div>
+                    <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Kategorie *</label>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <label class="cursor-pointer">
+                            <input type="radio" name="category" value="complaint" checked class="peer sr-only">
+                            <div class="border border-slate-200 peer-checked:border-red-500 peer-checked:bg-red-50 text-slate-700 peer-checked:text-red-700 p-2.5 rounded-xl text-center text-xs font-medium transition flex flex-col items-center gap-1">
+                                <i class="fa-solid fa-triangle-exclamation text-base text-red-500"></i>
+                                <span>Mangel</span>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="category" value="idea" class="peer sr-only">
+                            <div class="border border-slate-200 peer-checked:border-blue-500 peer-checked:bg-blue-50 text-slate-700 peer-checked:text-blue-700 p-2.5 rounded-xl text-center text-xs font-medium transition flex flex-col items-center gap-1">
+                                <i class="fa-solid fa-lightbulb text-base text-blue-500"></i>
+                                <span>Idee</span>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="category" value="note" class="peer sr-only">
+                            <div class="border border-slate-200 peer-checked:border-amber-500 peer-checked:bg-amber-50 text-slate-700 peer-checked:text-amber-700 p-2.5 rounded-xl text-center text-xs font-medium transition flex flex-col items-center gap-1">
+                                <i class="fa-solid fa-info-circle text-base text-amber-500"></i>
+                                <span>Hinweis</span>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="category" value="praise" class="peer sr-only">
+                            <div class="border border-slate-200 peer-checked:border-emerald-500 peer-checked:bg-emerald-50 text-slate-700 peer-checked:text-emerald-700 p-2.5 rounded-xl text-center text-xs font-medium transition flex flex-col items-center gap-1">
+                                <i class="fa-solid fa-heart text-base text-emerald-500"></i>
+                                <span>Lob</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Title -->
+                <div>
+                    <label for="title" class="block text-xs font-semibold uppercase text-slate-500 mb-1">Titel / Kurzbeschreibung *</label>
+                    <input type="text" id="title" required placeholder="z. B. Defekte Straßenlaterne" 
+                        class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+
+                <!-- Location / Address -->
+                <div>
+                    <label for="address" class="block text-xs font-semibold uppercase text-slate-500 mb-1">Ort / Straße *</label>
+                    <div class="relative">
+                        <input type="text" id="address" required placeholder="Sudetenstraße, Neutraubling" 
+                            class="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <i class="fa-solid fa-location-dot absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                    </div>
+                    <p class="text-[11px] text-slate-400 mt-1">Genaue Koordinaten werden über den Kartenpin gespeichert.</p>
+                </div>
+
+                <!-- Description -->
+                <div>
+                    <label for="description" class="block text-xs font-semibold uppercase text-slate-500 mb-1">Ausführliche Beschreibung *</label>
+                    <textarea id="description" rows="3" required placeholder="Bitte beschreiben Sie das Anliegen möglichst genau..." 
+                        class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
+                </div>
+
+                <!-- Image Upload (Simulated Preview) -->
+                <div>
+                    <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Foto hinzufügen (optional)</label>
+                    <div class="flex items-center space-x-3">
+                        <label class="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg text-xs font-medium border border-slate-300 transition flex items-center space-x-2">
+                            <i class="fa-solid fa-camera text-slate-500"></i>
+                            <span>Datei wählen</span>
+                            <input type="file" id="photoInput" accept="image/*" onchange="handleImageUpload(event)" class="hidden">
+                        </label>
+                        <span id="fileName" class="text-xs text-slate-400 italic overflow-hidden text-ellipsis whitespace-nowrap max-w-[200px]">Kein Bild ausgewählt</span>
+                    </div>
+                    <div id="imagePreviewContainer" class="mt-2 hidden">
+                        <img id="imagePreview" src="" alt="Vorschau" class="h-24 rounded-lg object-cover border border-slate-200">
+                    </div>
+                </div>
+
+                <!-- User Info (Optional) -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                    <div>
+                        <label for="authorName" class="block text-xs font-semibold uppercase text-slate-500 mb-1">Ihr Name (optional)</label>
+                        <input type="text" id="authorName" placeholder="Max Mustermann" 
+                            class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label for="authorEmail" class="block text-xs font-semibold uppercase text-slate-500 mb-1">E-Mail für Rückfragen (optional)</label>
+                        <input type="email" id="authorEmail" placeholder="max@example.de" 
+                            class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                </div>
+
+                <!-- Lat & Lng Hidden inputs -->
+                <input type="hidden" id="lat">
+                <input type="hidden" id="lng">
+
+                <!-- Submit Buttons -->
+                <div class="flex justify-end space-x-3 pt-4 border-t border-slate-100">
+                    <button type="button" onclick="closeFormModal()" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium transition">
+                        Abbrechen
+                    </button>
+                    <button type="submit" class="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium shadow-md transition flex items-center space-x-2">
+                        <i class="fa-solid fa-paper-plane"></i>
+                        <span>Eintragen</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification Toast Box -->
+    <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-4 py-3 rounded-xl shadow-2xl z-[2000] hidden flex items-center space-x-3 text-sm">
+        <i id="toastIcon" class="fa-solid fa-circle-check text-teal-400 text-lg"></i>
+        <span id="toastMessage">Aktion erfolgreich.</span>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // --- CONSTANTS & INITIAL SETUP ---
+        const NEUTRAUBLING_COORDS = [48.9892, 12.1961]; // Neutraubling Center
+        const BOUNDS = [
+            [48.9600, 12.1500], // South-West
+            [49.0200, 12.2400]  // North-East
+        ];
+
+        // Categories Configuration
+        const CATEGORIES = {
+            complaint: {
+                label: 'Mangel / Beschwerde',
+                color: '#ef4444', // Red
+                bgClass: 'bg-red-100 text-red-800 border-red-200',
+                badgeBg: 'bg-red-500',
+                icon: 'fa-triangle-exclamation'
+            },
+            idea: {
+                label: 'Anregung / Idee',
+                color: '#3b82f6', // Blue
+                bgClass: 'bg-blue-100 text-blue-800 border-blue-200',
+                badgeBg: 'bg-blue-500',
+                icon: 'fa-lightbulb'
+            },
+            note: {
+                label: 'Anmerkung / Hinweis',
+                color: '#f59e0b', // Amber/Yellow
+                bgClass: 'bg-amber-100 text-amber-800 border-amber-200',
+                badgeBg: 'bg-amber-500',
+                icon: 'fa-info-circle'
+            },
+            praise: {
+                label: 'Lob / Positives',
+                color: '#10b981', // Emerald Green
+                bgClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+                badgeBg: 'bg-emerald-500',
+                icon: 'fa-heart'
+            }
+        };
+
+        // Realistic Demo Data for Neutraubling
+        const INITIAL_DEMO_REPORTS = [
+            {
+                id: 'demo-1',
+                category: 'complaint',
+                title: 'Defekte Straßenlaterne',
+                description: 'Die Straßenlaterne auf Höhe Hausnummer 14 leuchtet seit zwei Tagen nicht mehr. Nachts ist es dort sehr dunkel.',
+                address: 'Sudetenstraße 14, Neutraubling',
+                lat: 48.9885,
+                lng: 12.1942,
+                author: 'Anna M.',
+                date: '28.10.2026',
+                upvotes: 4,
+                imageUrl: 'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=400&q=80'
+            },
+            {
+                id: 'demo-2',
+                category: 'idea',
+                title: 'Mehrgenerationen-Spielgerät am See',
+                description: 'Wäre super, wenn am Neutraublinger See noch ein Fitnessgerät für Senioren oder ein integratives Spielgerät aufgestellt werden könnte.',
+                address: 'Neutraublinger See (Nordufer)',
+                lat: 48.9832,
+                lng: 12.2025,
+                author: 'Stefan K.',
+                date: '29.10.2026',
+                upvotes: 12,
+                imageUrl: 'https://images.unsplash.com/photo-1519331379826-f10be5486c6f?auto=format&fit=crop&w=400&q=80'
+            },
+            {
+                id: 'demo-3',
+                category: 'praise',
+                title: 'Sehr schöner Blumenschmuck am Rathaus',
+                description: 'Ein großes Lob an das Bepflanzungsteam der Stadtverwaltung! Die Blumenbeete vor dem Rathaus sehen wunderschön aus.',
+                address: 'Regensburger Str. 9, Neutraubling',
+                lat: 48.9910,
+                lng: 12.1930,
+                author: 'Maria B.',
+                date: '25.10.2026',
+                upvotes: 18,
+                imageUrl: 'https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?auto=format&fit=crop&w=400&q=80'
+            },
+            {
+                id: 'demo-4',
+                category: 'note',
+                title: 'Hinweis zu Baustellenabsicherung',
+                description: 'Bei der Baustelle in der Schlesierstraße liegt ein Absperrgitter leicht auf dem Gehweg. Bitte etwas zurückschieben für Kinderwägen.',
+                address: 'Schlesierstraße / Ecke Dresdner Str.',
+                lat: 48.9925,
+                lng: 12.1990,
+                author: 'Thomas W.',
+                date: '30.10.2026',
+                upvotes: 2,
+                imageUrl: null
+            }
+        ];
+
+        // App State variables
+        let map;
+        let markersGroup;
+        let tempMarker = null;
+        let reports = [];
+        let activeFilter = 'all';
+        let currentUploadedImageBase64 = null;
+
+        // Initialize App on DOM Load
+        window.onload = function() {
+            initMap();
+            loadReports();
+            renderReportsList();
+            updateFilterCounts();
+        };
+
+        // --- MAP INITIALIZATION ---
+        function initMap() {
+            // Create map & set view bounds restricted to Neutraubling area
+            map = L.map('map', {
+                center: NEUTRAUBLING_COORDS,
+                zoom: 15,
+                minZoom: 13,
+                maxZoom: 18,
+                maxBounds: BOUNDS,
+                maxBoundsViscosity: 0.8
+            });
+
+            // OpenStreetMap Tiles
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> Mitwirkende | Stadt Neutraubling'
+            }).addTo(map);
+
+            markersGroup = L.layerGroup().addTo(map);
+
+            // Handle Click on Map to select location for new report
+            map.on('click', function(e) {
+                const { lat, lng } = e.latlng;
+                setTemporaryPin(lat, lng);
+            });
+        }
+
+        // --- MARKER CREATION HELPER ---
+        function createCustomIcon(category, isTemp = false) {
+            const catConfig = CATEGORIES[category] || CATEGORIES.complaint;
+            const color = isTemp ? '#64748b' : catConfig.color;
+            const iconClass = isTemp ? 'fa-thumbtack' : catConfig.icon;
+            const pulseClass = isTemp ? 'pin-pulse' : '';
+
+            const svgHtml = `
+                <div class="${pulseClass} flex items-center justify-center w-9 h-9 rounded-full shadow-lg border-2 border-white text-white font-bold" style="background-color: ${color};">
+                    <i class="fa-solid ${iconClass} text-sm"></i>
+                </div>
+            `;
+
+            return L.divIcon({
+                html: svgHtml,
+                className: 'custom-map-marker',
+                iconSize: [36, 36],
+                iconAnchor: [18, 36],
+                popupAnchor: [0, -34]
+            });
+        }
+
+        // Set Temporary Pin on Map
+        function setTemporaryPin(lat, lng) {
+            if (tempMarker) {
+                map.removeLayer(tempMarker);
+            }
+
+            tempMarker = L.marker([lat, lng], {
+                icon: createCustomIcon('complaint', true)
+            }).addTo(map);
+
+            // Auto fill coordinates in hidden form fields
+            document.getElementById('lat').value = lat;
+            document.getElementById('lng').value = lng;
+
+            // Prompt user with modal or map notification
+            openFormModal(lat, lng);
+        }
+
+        // --- DATA STORAGE & MANAGEMENT ---
+        function loadReports() {
+            const stored = localStorage.getItem('neutraubling_reports');
+            if (stored) {
+                try {
+                    reports = JSON.parse(stored);
+                } catch(e) {
+                    reports = [...INITIAL_DEMO_REPORTS];
+                }
+            } else {
+                reports = [...INITIAL_DEMO_REPORTS];
+                saveReportsToStorage();
+            }
+            renderMarkers();
+        }
+
+        function saveReportsToStorage() {
+            localStorage.setItem('neutraubling_reports', JSON.stringify(reports));
+        }
+
+        function resetToDemoData() {
+            if(confirm("Möchten Sie die App auf die ursprünglichen Beispiel-Einträge zurücksetzen?")) {
+                reports = [...INITIAL_DEMO_REPORTS];
+                saveReportsToStorage();
+                renderMarkers();
+                renderReportsList();
+                updateFilterCounts();
+                showToast("Demodaten wiederhergestellt.");
+            }
+        }
+
+        // --- RENDER MARKERS ON MAP ---
+        function renderMarkers() {
+            markersGroup.clearLayers();
+
+            const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+
+            reports.forEach(report => {
+                // Apply filters
+                if (activeFilter !== 'all' && report.category !== activeFilter) return;
+                if (searchQuery && !report.title.toLowerCase().includes(searchQuery) && !report.address.toLowerCase().includes(searchQuery)) return;
+
+                const cat = CATEGORIES[report.category] || CATEGORIES.complaint;
+                const marker = L.marker([report.lat, report.lng], {
+                    icon: createCustomIcon(report.category)
+                });
+
+                // Build Popup HTML
+                const popupContent = `
+                    <div class="text-slate-800 text-sm">
+                        ${report.imageUrl ? `<img src="${report.imageUrl}" class="w-full h-32 object-cover" alt="Meldung Bild">` : ''}
+                        <div class="p-3.5">
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold text-white uppercase tracking-wider ${cat.badgeBg}">
+                                    ${cat.label.split('/')[0]}
+                                </span>
+                                <span class="text-[11px] text-slate-400"><i class="fa-regular fa-clock mr-1"></i>${report.date}</span>
+                            </div>
+                            <h4 class="font-bold text-slate-900 text-base leading-snug mb-1">${escapeHtml(report.title)}</h4>
+                            <p class="text-xs text-slate-500 mb-2 flex items-center">
+                                <i class="fa-solid fa-location-dot text-red-400 mr-1"></i> ${escapeHtml(report.address)}
+                            </p>
+                            <p class="text-xs text-slate-600 mb-3 line-clamp-3 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                ${escapeHtml(report.description)}
+                            </p>
+                            <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+                                <span class="text-[11px] text-slate-400">Von: ${escapeHtml(report.author || 'Anonym')}</span>
+                                <button onclick="upvoteReport('${report.id}')" class="bg-blue-50 hover:bg-blue-100 text-blue-700 px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center space-x-1 transition active:scale-95">
+                                    <i class="fa-regular fa-thumbs-up"></i>
+                                    <span>Unterstützen (${report.upvotes || 0})</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                marker.bindPopup(popupContent);
+                marker.reportId = report.id;
+                markersGroup.addLayer(marker);
+            });
+        }
+
+        // --- RENDER SIDEBAR LIST ---
+        function renderReportsList() {
+            const listContainer = document.getElementById('reportsList');
+            const searchQuery = document.getElementById('searchInput').value.toLowerCase();
+
+            const filtered = reports.filter(r => {
+                const matchesFilter = (activeFilter === 'all' || r.category === activeFilter);
+                const matchesSearch = !searchQuery || r.title.toLowerCase().includes(searchQuery) || r.address.toLowerCase().includes(searchQuery);
+                return matchesFilter && matchesSearch;
+            });
+
+            if (filtered.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="text-center py-10 text-slate-400">
+                        <i class="fa-solid fa-folder-open text-3xl mb-2"></i>
+                        <p class="text-sm">Keine Einträge für diesen Filter gefunden.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            listContainer.innerHTML = filtered.map(report => {
+                const cat = CATEGORIES[report.category] || CATEGORIES.complaint;
+                return `
+                    <div onclick="focusReportOnMap('${report.id}')" class="p-3.5 bg-white border border-slate-200 hover:border-blue-400 rounded-xl shadow-sm hover:shadow-md transition cursor-pointer group">
+                        <div class="flex items-start justify-between gap-2 mb-1">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border ${cat.bgClass}">
+                                <i class="fa-solid ${cat.icon} mr-1 text-[10px]"></i>
+                                ${cat.label.split('/')[0]}
+                            </span>
+                            <span class="text-[11px] text-slate-400">${report.date}</span>
+                        </div>
+                        <h4 class="font-semibold text-slate-800 text-sm group-hover:text-blue-600 transition mb-1">${escapeHtml(report.title)}</h4>
+                        <p class="text-xs text-slate-500 mb-2 flex items-center">
+                            <i class="fa-solid fa-location-dot text-slate-400 mr-1 text-[10px]"></i>
+                            <span class="truncate">${escapeHtml(report.address)}</span>
+                        </p>
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-100">
+                            <span><i class="fa-solid fa-user text-slate-300 mr-1"></i>${escapeHtml(report.author || 'Anonym')}</span>
+                            <span class="font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
+                                <i class="fa-regular fa-thumbs-up text-blue-500 mr-1"></i>${report.upvotes || 0}
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // --- FILTER & SEARCH HANDLERS ---
+        function setCategoryFilter(category) {
+            activeFilter = category;
+            
+            // Update filter button styling
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active', 'bg-slate-800', 'text-white');
+                if(!btn.id.includes('all')) {
+                    const catName = btn.id.replace('filter-', '');
+                    btn.classList.add(`bg-${CATEGORIES[catName]?.color}-100`);
+                }
+            });
+
+            const activeBtn = document.getElementById(`filter-${category}`);
+            if (activeBtn) {
+                activeBtn.classList.add('bg-slate-800', 'text-white');
+            }
+
+            renderMarkers();
+            renderReportsList();
+        }
+
+        function filterReports() {
+            renderMarkers();
+            renderReportsList();
+        }
+
+        function updateFilterCounts() {
+            document.getElementById('count-all').innerText = reports.length;
+            document.getElementById('count-complaint').innerText = reports.filter(r => r.category === 'complaint').length;
+            document.getElementById('count-idea').innerText = reports.filter(r => r.category === 'idea').length;
+            document.getElementById('count-note').innerText = reports.filter(r => r.category === 'note').length;
+            document.getElementById('count-praise').innerText = reports.filter(r => r.category === 'praise').length;
+        }
+
+        // --- FOCUS REPORT ON MAP ---
+        function focusReportOnMap(id) {
+            const report = reports.find(r => r.id === id);
+            if (!report) return;
+
+            map.setView([report.lat, report.lng], 17, { animate: true });
+
+            // Find marker and open popup
+            markersGroup.eachLayer(layer => {
+                if (layer.reportId === id) {
+                    layer.openPopup();
+                }
+            });
+
+            // On mobile screen, hide sidebar after selection
+            if (window.innerWidth < 1024) {
+                toggleSidebar(false);
+            }
+        }
+
+        // --- UPVOTE / SUPPORT FEATURE ---
+        function upvoteReport(id) {
+            const report = reports.find(r => r.id === id);
+            if (report) {
+                report.upvotes = (report.upvotes || 0) + 1;
+                saveReportsToStorage();
+                renderMarkers();
+                renderReportsList();
+                showToast("Vielen Dank für Ihre Unterstützung!");
+            }
+        }
+
+        // --- MODAL & FORM HANDLING ---
+        function openFormModal(lat = null, lng = null) {
+            if (!lat || !lng) {
+                // If not set via map click, default to center of Neutraubling
+                const center = map.getCenter();
+                lat = center.lat;
+                lng = center.lng;
+                setTemporaryPin(lat, lng);
+            }
+
+            document.getElementById('lat').value = lat;
+            document.getElementById('lng').value = lng;
+            
+            // Try to set address placeholder or geocode estimate
+            document.getElementById('address').value = `Neutraubling (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+
+            document.getElementById('formModal').classList.remove('hidden');
+        }
+
+        function closeFormModal() {
+            document.getElementById('formModal').classList.add('hidden');
+            document.getElementById('reportForm').reset();
+            document.getElementById('imagePreviewContainer').classList.add('hidden');
+            document.getElementById('fileName').innerText = "Kein Bild ausgewählt";
+            currentUploadedImageBase64 = null;
+
+            if (tempMarker) {
+                map.removeLayer(tempMarker);
+                tempMarker = null;
+            }
+        }
+
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                document.getElementById('fileName').innerText = file.name;
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    currentUploadedImageBase64 = e.target.result;
+                    const preview = document.getElementById('imagePreview');
+                    preview.src = e.target.result;
+                    document.getElementById('imagePreviewContainer').classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function handleFormSubmit(event) {
+            event.preventDefault();
+
+            const category = document.querySelector('input[name="category"]:checked').value;
+            const title = document.getElementById('title').value;
+            const address = document.getElementById('address').value;
+            const description = document.getElementById('description').value;
+            const author = document.getElementById('authorName').value || 'Anonym';
+            const lat = parseFloat(document.getElementById('lat').value);
+            const lng = parseFloat(document.getElementById('lng').value);
+
+            const newReport = {
+                id: 'report-' + Date.now(),
+                category: category,
+                title: title,
+                description: description,
+                address: address,
+                lat: lat,
+                lng: lng,
+                author: author,
+                date: new Date().toLocaleDateString('de-DE'),
+                upvotes: 1,
+                imageUrl: currentUploadedImageBase64
+            };
+
+            reports.unshift(newReport); // Add to top
+            saveReportsToStorage();
+
+            renderMarkers();
+            renderReportsList();
+            updateFilterCounts();
+
+            closeFormModal();
+            showToast("Meldung erfolgreich eingereicht!");
+
+            // Focus new marker
+            focusReportOnMap(newReport.id);
+        }
+
+        // --- UI UTILS ---
+        function toggleSidebar(forceState = null) {
+            const sidebar = document.getElementById('sidebar');
+            if (forceState !== null) {
+                if (forceState) {
+                    sidebar.classList.remove('-translate-x-full');
+                } else {
+                    sidebar.classList.add('-translate-x-full');
+                }
+            } else {
+                sidebar.classList.toggle('-translate-x-full');
+            }
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMessage').innerText = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 3000);
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
